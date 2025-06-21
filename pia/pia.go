@@ -85,7 +85,7 @@ func NewPIAClient(username, password, region string, verbose bool, portForwardin
 	// Get list of servers
 	serverList, err := piaClient.getServerList()
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "failed to fetch server list from PIA")
 	}
 
 	// Set servers
@@ -97,6 +97,15 @@ func NewPIAClient(username, password, region string, verbose bool, portForwardin
 	piaClient.wireguardServers, err = piaClient.generateWireguardServerList(serverList)
 	if err != nil {
 		return nil, err
+	}
+
+	// Validate region exists
+	if _, exists := piaClient.wireguardServers[Region(region)]; !exists {
+		availableRegions := make([]string, 0, len(piaClient.wireguardServers))
+		for r := range piaClient.wireguardServers {
+			availableRegions = append(availableRegions, string(r))
+		}
+		return nil, fmt.Errorf("region '%s' not found. Available regions: %v. Use 'pia-wg-config regions' to see all available regions", region, availableRegions[:5]) // Show first 5 as example
 	}
 
 	return &piaClient, nil
@@ -131,6 +140,21 @@ func (p *PIAClient) GetToken() (string, error) {
 	return tokenResp.Token, nil
 }
 
+// GetAvailableRegions returns all available regions
+func (p *PIAClient) GetAvailableRegions() (map[Region]string, error) {
+	serverList, err := p.getServerList()
+	if err != nil {
+		return nil, err
+	}
+
+	regions := make(map[Region]string)
+	for _, r := range serverList.Regions {
+		regions[Region(r.ID)] = r.Name
+	}
+
+	return regions, nil
+}
+
 // AddKey
 func (p *PIAClient) AddKey(token, publickey string) (AddKeyResult, error) {
 	var addKeyResp AddKeyResult
@@ -158,14 +182,22 @@ func (p *PIAClient) getWireguardServerForRegion() Server {
 	if p.verbose {
 		log.Print("Getting wireguard server for region: ", p.region)
 	}
-	return p.wireguardServers[Region(p.region)][0]
+	servers := p.wireguardServers[Region(p.region)]
+	if len(servers) == 0 {
+		log.Fatalf("No Wireguard servers available for region: %s", p.region)
+	}
+	return servers[0]
 }
 
 func (p *PIAClient) getMetadataServerForRegion() Server {
 	if p.verbose {
 		log.Print("Getting metadata server for region: ", p.region)
 	}
-	return p.metadataServers[Region(p.region)][0]
+	servers := p.metadataServers[Region(p.region)]
+	if len(servers) == 0 {
+		log.Fatalf("No metadata servers available for region: %s", p.region)
+	}
+	return servers[0]
 }
 
 // getSeverList returns a list of servers from the PIA API
@@ -206,7 +238,7 @@ func (p *PIAClient) generateWireguardServerList(list piaServerList) (ServerList,
 		}
 
 		for _, server := range r.Servers.Wg {
-			servers[Region(r.ID)] = append(servers[Region(r.Name)], Server{
+			servers[Region(r.ID)] = append(servers[Region(r.ID)], Server{
 				Cn: server.Cn,
 				IP: server.IP,
 			})
@@ -234,7 +266,7 @@ func (p *PIAClient) generateMetadataServerList(list piaServerList) (ServerList, 
 		}
 
 		for _, server := range r.Servers.Meta {
-			servers[Region(r.ID)] = append(servers[Region(r.Name)], Server{
+			servers[Region(r.ID)] = append(servers[Region(r.ID)], Server{
 				Cn: server.Cn,
 				IP: server.IP,
 			})
