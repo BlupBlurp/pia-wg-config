@@ -160,7 +160,7 @@ func listRegions(c *cli.Context) error {
 	fmt.Println("Fetching available regions from PIA...")
 
 	// Create a dummy client just to get the server list
-	piaClient, err := pia.NewPIAClient("", "", "us_california", false)
+	piaClient, err := pia.NewPIAClient("", "", "ca_toronto", false, true)
 	if err != nil {
 		return fmt.Errorf("failed to fetch regions: %v", err)
 	}
